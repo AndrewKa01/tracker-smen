@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Смены · чистыми на руки</title>
+<link rel="stylesheet" href="static/style.css">
+
+<!-- иконки и установка на домашний экран -->
+<link rel="icon" type="image/png" sizes="32x32" href="static/icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="static/icons/icon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="static/icons/icon-180.png">
+<link rel="manifest" href="static/manifest.json">
+<meta name="theme-color" content="#12151C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Смены">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="app">
+
+<div class="head">
+  <div class="eyebrow">Яндекс Доставка · Lada Granta</div>
+</div>
+
+<!-- вкладки месяцев -->
+<div class="month-tabs" id="monthTabs"></div>
+
+<!-- панель выбора произвольного периода -->
+<div class="range-panel" id="rangePanel" style="display:none">
+  <div class="grid2">
+    <div>
+      <label>С даты</label>
+      <input type="date" id="rangeFrom">
+    </div>
+    <div>
+      <label>По дату</label>
+      <input type="date" id="rangeTo">
+    </div>
+  </div>
+  <button type="button" class="secondary" style="margin-top:10px" onclick="applyCustomRange()">Показать период</button>
+</div>
+
+<!-- приборка -->
+<div class="dash">
+  <div class="dash-hero">
+    <div class="gauge-box" id="gaugeBox"></div>
+    <div class="big" id="netRate">—<small> ₽/ч</small></div>
+  </div>
+  <div class="cap">средняя ставка чистыми, после бензина</div>
+  <div class="compare" id="monthCompare"></div>
+  <div class="dash-row">
+    <div class="cell"><div class="v" id="totNet" style="color:var(--green)">—</div><div class="l">чистыми всего</div></div>
+    <div class="cell"><div class="v" id="totFuel" style="color:var(--red)">—</div><div class="l">расходы</div></div>
+    <div class="cell"><div class="v" id="totHours">—</div><div class="l">часов</div></div>
+    <div class="cell"><div class="v" id="totKmRate">—</div><div class="l">₽/км</div></div>
+  </div>
+  <div class="goal-row" id="goalRow">
+    <div class="goal-bar"><div class="goal-fill" id="goalFill"></div></div>
+    <div class="goal-label" id="goalLabel"></div>
+  </div>
+  <div class="income-split" id="incomeSplit">
+    <div class="split-label">
+      <span>Смены <b class="shifts-c" id="splitShiftsVal"></b></span>
+      <span>Персоналка <b class="personal-c" id="splitPersonalVal"></b></span>
+    </div>
+    <div class="split-bar">
+      <div class="split-seg shifts" id="splitSegShifts"></div>
+      <div class="split-seg personal" id="splitSegPersonal"></div>
+    </div>
+  </div>
+  <div class="range-extra" id="rangeExtra" style="display:none"></div>
+</div>
+
+<!-- день vs ночь -->
+<div class="vs">
+  <div class="side day">
+    <div class="tag">День</div>
+    <div class="rate" id="dayRate">—</div>
+    <div class="n" id="dayN">нет смен</div>
+  </div>
+  <div class="side night">
+    <div class="tag">Ночь</div>
+    <div class="rate" id="nightRate">—</div>
+    <div class="n" id="nightN">нет смен</div>
+  </div>
+</div>
+
+<!-- графики -->
+<div class="card" id="chartsCard">
+  <h3>Динамика по сменам</h3>
+  <div class="chart-grid">
+    <div class="chart-block cum-block">
+      <div class="chart-head"><span class="chart-title">Нарастающим итогом</span><span class="chart-unit">₽</span></div>
+      <div id="chartCumulative" class="chart"></div>
+    </div>
+    <div class="chart-block">
+      <div class="chart-head"><span class="chart-title">Ставка чистыми</span><span class="chart-unit">₽/ч</span></div>
+      <div id="chartRate" class="chart"></div>
+    </div>
+    <div class="chart-block">
+      <div class="chart-head"><span class="chart-title">Часы за смену</span><span class="chart-unit">ч</span></div>
+      <div id="chartHours" class="chart"></div>
+    </div>
+    <div class="chart-block">
+      <div class="chart-head"><span class="chart-title">Бензин за смену</span><span class="chart-unit">₽</span></div>
+      <div id="chartFuel" class="chart"></div>
+    </div>
+    <div class="chart-block">
+      <div class="chart-head"><span class="chart-title">Ставка по дням недели</span><span class="chart-unit">₽/ч</span></div>
+      <div id="chartWeekday" class="chart"></div>
+    </div>
+  </div>
+  <div class="chart-legend">
+    <span><i class="dot day"></i> день</span>
+    <span><i class="dot night"></i> ночь</span>
+    <span><i class="dot mixed"></i> день+ночь в одну дату</span>
+    <span class="chart-window-note" id="chartWindowNote"></span>
+    <span class="chart-legend-note">слева — старые, справа — свежие смены</span>
+  </div>
+</div>
+
+<!-- боковая колонка на десктопе: настройки + форма ввода -->
+<aside class="sidebar">
+
+<!-- настройки топлива -->
+<div class="card" id="settingsCard">
+  <h3>Топливо · настройки</h3>
+  <div class="grid2">
+    <div>
+      <label>Цена бензина, ₽/л</label>
+      <input type="number" step="0.1" id="fuelPrice" placeholder="55">
+    </div>
+    <div>
+      <label>Расход, л/100 км</label>
+      <input type="number" step="0.1" id="consumption" placeholder="9">
+    </div>
+  </div>
+  <div class="hint">Запоминаются автоматически. Расход нужен, чтобы прикинуть литры по пробегу, если не знаешь точно, сколько сжёг.</div>
+  <label id="goalFieldLabel">Цель на месяц, ₽ (чистыми)</label>
+  <input type="number" step="100" id="monthGoal" placeholder="60000">
+  <div class="hint" id="goalFieldHint">Цель задаётся отдельно для каждого месяца. Выбери месяц во вкладках сверху, и здесь появится его цель.</div>
+  <label>Оформление</label>
+  <div class="theme-switch">
+    <button type="button" class="theme-btn" id="themeBtn-dark" onclick="setTheme('dark')">Тёмная</button>
+    <button type="button" class="theme-btn" id="themeBtn-priborka" onclick="setTheme('priborka')">Приборка</button>
+    <button type="button" class="theme-btn" id="themeBtn-putevoi" onclick="setTheme('putevoi')">Путевой лист</button>
+  </div>
+</div>
+
+<!-- форма смены -->
+<div class="card" id="shiftForm">
+  <h3 id="shiftFormTitle">Новая смена</h3>
+  <div class="grid2">
+    <div>
+      <label>Дата</label>
+      <input type="date" id="date">
+    </div>
+    <div>
+      <label>Тип</label>
+      <select id="period">
+        <option value="night">Ночь</option>
+        <option value="day">День</option>
+        <option value="personal">Персоналка</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="timeFieldsBlock">
+    <label>Как задать время</label>
+    <div class="mode-switch">
+      <button type="button" class="mode-btn active" id="modeRangeBtn" onclick="setDurationMode('range')">Промежуток</button>
+      <button type="button" class="mode-btn" id="modeMinutesBtn" onclick="setDurationMode('minutes')">Минуты</button>
+    </div>
+
+    <div id="rangeInputBlock">
+      <div class="grid2">
+        <div>
+          <label>Начало</label>
+          <div class="time-wrap">
+            <input type="text" inputmode="numeric" maxlength="5" id="startTime" placeholder="--:--"
+                   autocomplete="off" oninput="onTimeTyped(this)" onblur="normalizeTime(this)">
+            <button type="button" class="time-open" onclick="openTimePicker('startTime')" aria-label="Выбрать время начала">🕐</button>
+          </div>
+        </div>
+        <div>
+          <label>Конец</label>
+          <div class="time-wrap">
+            <input type="text" inputmode="numeric" maxlength="5" id="endTime" placeholder="--:--"
+                   autocomplete="off" oninput="onTimeTyped(this)" onblur="normalizeTime(this)">
+            <button type="button" class="time-open" onclick="openTimePicker('endTime')" aria-label="Выбрать время конца">🕐</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- свой выбор времени: раскрывается под полями -->
+      <div class="timepick" id="timePicker" style="display:none">
+        <div class="tp-head">
+          <span id="tpTitle">Начало смены</span>
+          <span class="tp-val" id="tpValue">--:--</span>
+          <button type="button" class="tp-close" onclick="closeTimePicker()" aria-label="Закрыть">✕</button>
+        </div>
+        <div class="tp-chips" id="tpChips"></div>
+        <div class="tp-label">Часы</div>
+        <div class="tp-grid tp-hours" id="tpHours"></div>
+        <div class="tp-label">Минуты</div>
+        <div class="tp-grid tp-mins" id="tpMins"></div>
+        <div class="tp-fine">
+          <button type="button" onclick="nudgeMinute(-1)">−1 мин</button>
+          <button type="button" onclick="nudgeMinute(1)">+1 мин</button>
+        </div>
+      </div>
+
+      <div class="hint">Можно вписать четыре цифры (2200 → 22:00) или выбрать по кнопке. Для ночной смены с 22:00 до 03:00 конец меньше начала — это нормально, засчитаю как переход через полночь.</div>
+    </div>
+
+    <div id="minutesInputBlock" style="display:none">
+      <label>Смена, минут</label>
+      <input type="number" id="durationMinutes" placeholder="182">
+      <div class="hint">Просто общее количество минут за смену — время начала и конца записывать не нужно.</div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div>
+      <label>Длительность</label>
+      <input type="text" id="durationPreview" value="—" disabled>
+    </div>
+    <div>
+      <label>Заработано, ₽</label>
+      <input type="number" id="amount" placeholder="2250">
+    </div>
+  </div>
+
+  <div id="mileageFieldsBlock">
+    <div class="grid2">
+      <div>
+        <label>Пробег, км</label>
+        <input type="number" step="0.1" id="mileage" placeholder="45">
+      </div>
+      <div>
+        <label>Бензин, литров</label>
+        <input type="number" step="0.1" id="liters" placeholder="4.1">
+      </div>
+    </div>
+    <div class="hint">Литры — если знаешь точно (по чеку или бортовику). Если пусто, но есть пробег — посчитаю сам через расход из настроек.</div>
+  </div>
+
+  <div id="expensesFieldsBlock">
+    <label>Доп. расходы, ₽ (мойка, ТО, парковка...)</label>
+    <input type="number" step="10" id="expenses" placeholder="0">
+  </div>
+
+  <div class="hint" id="personalHint">Персоналка — премия за выполненную цель (кол-во заказов, план и т.п.). Учитывается в общей сумме, но не в часовой ставке — она бы её исказила, ведь часов на неё отдельно не тратится.</div>
+
+  <button class="primary" id="submitBtn" onclick="addEntry()">Записать смену</button>
+  <button type="button" class="secondary" id="cancelEditBtn" style="display:none" onclick="cancelEdit()">Отмена редактирования</button>
+</div>
+
+</aside>
+
+<!-- история -->
+<div class="card" id="historyCard">
+  <h3>История</h3>
+  <div id="entries"></div>
+</div>
+
+<div class="storage-note" id="storageNote"></div>
+
+</div>
+
+
+<script src="static/script.js"></script>
+
+</body>
+</html>
