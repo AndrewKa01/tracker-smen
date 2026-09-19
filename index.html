@@ -24,10 +24,6 @@
 
 <div class="app">
 
-<div class="head">
-  <div class="eyebrow">Яндекс Доставка · Lada Granta</div>
-</div>
-
 <!-- вкладки месяцев -->
 <div class="month-tabs" id="monthTabs"></div>
 
@@ -99,17 +95,14 @@
       <div class="chart-head"><span class="chart-title">Нарастающим итогом</span><span class="chart-unit">₽</span></div>
       <div id="chartCumulative" class="chart"></div>
     </div>
+    <div class="chart-block full-block">
+      <div class="chart-head"><span class="chart-title">Месяц к месяцу</span><span class="chart-unit">₽/день</span></div>
+      <div id="monthCompareLegend" class="month-compare-legend"></div>
+      <div id="chartMonthCompare" class="chart"></div>
+    </div>
     <div class="chart-block">
       <div class="chart-head"><span class="chart-title">Ставка чистыми</span><span class="chart-unit">₽/ч</span></div>
       <div id="chartRate" class="chart"></div>
-    </div>
-    <div class="chart-block">
-      <div class="chart-head"><span class="chart-title">Часы за смену</span><span class="chart-unit">ч</span></div>
-      <div id="chartHours" class="chart"></div>
-    </div>
-    <div class="chart-block">
-      <div class="chart-head"><span class="chart-title">Бензин за смену</span><span class="chart-unit">₽</span></div>
-      <div id="chartFuel" class="chart"></div>
     </div>
     <div class="chart-block">
       <div class="chart-head"><span class="chart-title">Ставка по дням недели</span><span class="chart-unit">₽/ч</span></div>
@@ -269,8 +262,6 @@
   <h3>История</h3>
   <div id="entries"></div>
 </div>
-
-<div class="storage-note" id="storageNote"></div>
 
 </div>
 

@@ -70,9 +70,10 @@ async function load() {
   if (state.settings.consumption) document.getElementById('consumption').value = state.settings.consumption;
   migrateGoals();
   syncGoalField();
-  const note = document.getElementById('storageNote');
-  if (mode === 'server') note.textContent = 'Данные сохраняются в базе на этом компьютере';
-  else note.textContent = '⚠ Не вижу сервер — запусти python app.py и обнови страницу';
+  // видимая надпись про хранилище убрана по просьбе — но если сервер всё же
+  // недоступен, это не должно происходить незаметно, поэтому оставляем след
+  // в консоли браузера (F12 → Console), чтобы было что показать при отладке
+  if (mode === 'error') console.warn('Сервер недоступен — данные не сохраняются. Проверь, запущен ли python app.py');
   render();
 }
 
@@ -964,7 +965,7 @@ function drawCumulativeChart(containerId, shiftsArr) {
   };
 
   box.innerHTML = `
-    <svg viewBox="0 0 ${W.toFixed(0)} ${H}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 ${W.toFixed(0)} ${H}" width="${W.toFixed(0)}" height="${H}" xmlns="http://www.w3.org/2000/svg">
       ${goalSvg}
       ${zeroSvg}
       <path class="cum-area" d="${areaPath}"/>
@@ -1158,8 +1159,21 @@ function drawChart(containerId, bars) {
   const plotH = 110;             // высота зоны столбиков (сверху место для цифры, снизу для даты)
   const topPad = 22;             // отступ сверху под подпись значения
   const gap = 10;                // расстояние между столбиками
+  // Раньше ширина холста считалась только по формуле n*46, без оглядки на
+  // реальный размер контейнера — из-за этого при разном n (7 у "по дням
+  // недели", до 14 у "ставки чистыми") получались РАЗНЫЕ пропорции
+  // холста, и при растягивании на одинаковую ширину колонки высота
+  // выходила разной: один график казался приземистым, другой — квадратным.
+  // drawCumulativeChart ниже всегда меряет box.clientWidth — берём тот же
+  // приём: если места в контейнере достаточно, просто заполняем его
+  // целиком (высота остаётся ровно H у всех графиков одинаково), и только
+  // если баров реально много и по 46 на каждый не помещается — холст
+  // становится шире контейнера, и контейнер уходит в горизонтальный скролл
+  // (overflow-x в .chart), а не сжимает бары до нечитаемых.
   const n = bars.length;
-  const W = Math.max(n * 46, 300); // ширина холста растёт с числом смен
+  const idealW = n * 46;
+  const containerW = box.clientWidth || idealW;
+  const W = Math.max(containerW, idealW, 300);
   const barW = (W - gap * (n - 1)) / n;
 
   /* Масштаб по размаху значений с нулём внутри.
@@ -1201,9 +1215,130 @@ function drawChart(containerId, bars) {
     : '';
 
   box.innerHTML =
-    `<svg viewBox="0 0 ${W.toFixed(0)} ${H}" preserveAspectRatio="xMidYMid meet"
+    `<svg viewBox="0 0 ${W.toFixed(0)} ${H}" width="${W.toFixed(0)}" height="${H}"
           xmlns="http://www.w3.org/2000/svg">${zeroSvg}${rects}</svg>`;
 }
+
+/* ── сравнение месяц-к-месяцу — по образцу графика в приложении Яндекс.Про
+   ("эта неделя vs прошлая"), только с шагом в месяц вместо недели: ось X —
+   число месяца (1, 2, 3...), одна линия — текущий календарный месяц,
+   вторая — предыдущий. Так сразу видно, обгоняешь ли ты себя же
+   месяц назад на ту же дату, а не просто сумму за прошлый период.
+
+   Специально не завязана на выбранную вкладку месяца/периода — это
+   сравнение всегда про "прямо сейчас vs месяц назад", а не про то, что
+   выбрано на вкладках сверху. Поэтому и берёт state.shifts напрямую,
+   а не filtered. */
+function drawMonthCompareChart(containerId) {
+  const box = document.getElementById(containerId);
+  const legendBox = document.getElementById('monthCompareLegend');
+
+  const today = new Date();
+  const curYear = today.getFullYear(), curMonthIdx = today.getMonth();
+  const todayDay = today.getDate();
+
+  const prevRef = new Date(curYear, curMonthIdx - 1, 1);
+  const prevYear = prevRef.getFullYear(), prevMonthIdx = prevRef.getMonth();
+  const daysInPrevMonth = new Date(prevYear, prevMonthIdx + 1, 0).getDate();
+
+  // суммируем net по датам из ВСЕХ смен — см. комментарий выше про то,
+  // почему не filtered
+  const byDate = new Map();
+  state.shifts.forEach(s => {
+    const c = calc(s);
+    byDate.set(s.date, (byDate.get(s.date) || 0) + c.net);
+  });
+
+  const prefix = (y, m) => `${y}-${pad2(m + 1)}-`;
+  const curPrefix = prefix(curYear, curMonthIdx), prevPrefix = prefix(prevYear, prevMonthIdx);
+  const hasPrevData = [...byDate.keys()].some(d => d.startsWith(prevPrefix));
+
+  const curDaily = Array.from({ length: todayDay }, (_, i) => byDate.get(curPrefix + pad2(i + 1)) || 0);
+  const prevDaily = Array.from({ length: daysInPrevMonth }, (_, i) => byDate.get(prevPrefix + pad2(i + 1)) || 0);
+
+  const curTotal = curDaily.reduce((a, b) => a + b, 0);
+  const prevTotal = prevDaily.reduce((a, b) => a + b, 0);
+  const curName = today.toLocaleDateString('ru-RU', { month: 'long' });
+  const prevName = prevRef.toLocaleDateString('ru-RU', { month: 'long' });
+
+  legendBox.innerHTML = `
+    <span class="mc-legend-item"><i class="dot mc-dot-cur"></i>${curName} · ${rub(curTotal)}</span>
+    <span class="mc-legend-item"><i class="dot mc-dot-prev"></i>${prevName} · ${hasPrevData ? rub(prevTotal) : 'нет данных'}</span>
+  `;
+
+  // ось X растягиваем на больший из двух диапазонов — обычно это длина
+  // прошлого месяца (30/31 день), но если сегодня, скажем, 31 число,
+  // а прошлый месяц был короче — не обрезаем текущую линию
+  const numDays = Math.max(daysInPrevMonth, todayDay, 2);
+
+  const H = 150, plotH = 110, topPad = 18, leftPad = 34, rightPad = 6;
+  const W = Math.max(box.clientWidth || 300, 300);
+  const usableW = W - leftPad - rightPad;
+  const stepX = numDays > 1 ? usableW / (numDays - 1) : 0;
+  const xAt = i => leftPad + stepX * i;
+
+  const hi = Math.max(...curDaily, ...prevDaily, 0);
+  const lo = Math.min(...curDaily, ...prevDaily, 0);
+  const span = (hi - lo) || 1;
+  const yAt = v => topPad + plotH - ((v - lo) / span) * plotH;
+
+  /* «Красивые» деления оси Y (500, 1000, 1500...), а не голое span/4 —
+     иначе шаг получался бы вида 733.4, что бесполезно для прикидки на
+     глаз. Раунд до 1/2/5×10^n — стандартный приём для осей графиков. */
+  const niceStep = raw => {
+    const exp = Math.floor(Math.log10(raw));
+    const base = Math.pow(10, exp);
+    const frac = raw / base;
+    return (frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10) * base;
+  };
+  const yStep = niceStep(span / 4) || 1;
+  const yTicks = [];
+  for (let t = Math.ceil(lo / yStep) * yStep; t <= hi + 1e-6; t += yStep) yTicks.push(Math.round(t));
+
+  let gridSvg = '';
+  yTicks.forEach(t => {
+    const y = yAt(t).toFixed(1);
+    gridSvg += `
+      <line class="mc-grid-line" x1="${leftPad}" y1="${y}" x2="${(W - rightPad).toFixed(1)}" y2="${y}"/>
+      <text class="mc-grid-label" x="${leftPad - 6}" y="${(yAt(t) + 3).toFixed(1)}">${t}</text>`;
+  });
+
+  const pathOf = arr => arr.map((v, i) => (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(v).toFixed(1)).join(' ');
+  const curPath = pathOf(curDaily);
+  const prevPath = hasPrevData ? pathOf(prevDaily) : '';
+
+  // подписи по оси X — числа месяца через равный шаг, чтобы не налезали друг на друга
+  const xLabelStep = Math.ceil(numDays / 7) || 1;
+  let xLabels = '';
+  for (let i = 0; i < numDays; i += xLabelStep) {
+    xLabels += `<text class="bar-x" x="${xAt(i).toFixed(1)}" y="${H - 4}">${i + 1}</text>`;
+  }
+  const lastDayNum = numDays;
+  if ((lastDayNum - 1) % xLabelStep !== 0) {
+    xLabels += `<text class="bar-x" x="${xAt(lastDayNum - 1).toFixed(1)}" y="${H - 4}">${lastDayNum}</text>`;
+  }
+
+  const curLastI = curDaily.length - 1;
+  const curLastY = yAt(curDaily[curLastI]);
+  const curLastX = xAt(curLastI);
+  // подпись — прямо над точкой "сегодня", а не у правого края холста:
+  // "сегодня" почти никогда не совпадает с последним днём месяца, в
+  // отличие от cumulative-графика, где последняя точка всегда с краю
+  const curDot = curLastI >= 0
+    ? `<circle class="mc-dot-cur" cx="${curLastX.toFixed(1)}" cy="${curLastY.toFixed(1)}" r="4"/>
+       <text class="bar-val" x="${curLastX.toFixed(1)}" y="${Math.max(11, curLastY - 10).toFixed(1)}">${rub(curDaily[curLastI])}</text>`
+    : '';
+
+  box.innerHTML = `
+    <svg viewBox="0 0 ${W.toFixed(0)} ${H}" width="${W.toFixed(0)}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+      ${gridSvg}
+      ${prevPath ? `<path class="mc-line-prev" d="${prevPath}"/>` : ''}
+      <path class="mc-line-cur" d="${curPath}"/>
+      ${curDot}
+      ${xLabels}
+    </svg>`;
+}
+
 
 function render() {
   const list = document.getElementById('entries');
@@ -1220,12 +1355,17 @@ function render() {
   renderMonthTabs(months);
   syncGoalField();   // поле цели всегда соответствует выбранному месяцу
 
+  // не зависит от выбранной вкладки — поэтому считается и рисуется здесь,
+  // раньше любых ранних return ниже (иначе на пустой вкладке график тоже
+  // пустел бы, хотя реальные смены за этот и прошлый месяц могут быть)
+  drawMonthCompareChart('chartMonthCompare');
+
   if (!state.shifts.length) {
     list.innerHTML = '<div class="empty">Пока пусто — запиши первую смену выше</div>';
     setDash(null);
     updateMonthExtras(null);
     updateRangeExtra(null);
-    ['chartRate','chartHours','chartFuel','chartWeekday','chartCumulative'].forEach(id =>
+    ['chartRate','chartWeekday','chartCumulative'].forEach(id =>
       document.getElementById(id).innerHTML = '<div class="chart-empty">Появятся после первой смены</div>');
     document.getElementById('chartWindowNote').textContent = '';
     return;
@@ -1244,7 +1384,7 @@ function render() {
     setDash(null);
     updateMonthExtras(null);
     updateRangeExtra(null);
-    ['chartRate','chartHours','chartFuel','chartWeekday','chartCumulative'].forEach(id =>
+    ['chartRate','chartWeekday','chartCumulative'].forEach(id =>
       document.getElementById(id).innerHTML = '<div class="chart-empty">Нет данных за этот период</div>');
     document.getElementById('chartWindowNote').textContent = '';
     return;
@@ -1342,14 +1482,6 @@ function render() {
 
   drawChart('chartRate', dailyForCharts.map(d => ({
     value: d.netRate, label: shortDate(d.date), period: d.period, display: Math.round(d.netRate)
-  })));
-
-  drawChart('chartHours', dailyForCharts.map(d => ({
-    value: d.hours, label: shortDate(d.date), period: d.period, display: d.hours.toFixed(1)
-  })));
-
-  drawChart('chartFuel', dailyForCharts.map(d => ({
-    value: d.fuelCost, label: shortDate(d.date), period: d.period, display: Math.round(d.fuelCost)
   })));
 
   drawWeekdayChart(filtered.filter(s => s.period !== 'personal'));
